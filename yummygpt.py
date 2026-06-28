@@ -129,6 +129,9 @@ class GPTBlock(nn.Module):
 class YummyGPT(nn.Module):
     def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2):
         super().__init__()
+
+        self.sequence_length = sequence_length
+        
         self.wte = nn.Embedding(vocab_size, d_model)
         self.wpe = PositionalEncodings(sequence_length, d_model)
         self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for i in range(n_blocks)])
@@ -141,20 +144,29 @@ class YummyGPT(nn.Module):
             logits = block.forward(logits)
         logits = self.fl(logits)
         loss = None
-        if targets != None:
+        if targets is not None:
             batch_size, sequence_length, d_model = logits.shape
             logits = logits.view(batch_size * sequence_length, d_model)
             targets = targets.view(batch_size * sequence_length)
             loss = F.cross_entropy(logits, targets)
         return logits, loss
 
-    def generate(self, inputs, max_new_tokens):
+    def generate(self, inputs, max_new_tokens, eos_token=None, temperature=1.0):
+        if temperature == 0:
+            print("\ntemperature set to 1.0\n")
+            temperature = 1.0
         for i in range(max_new_tokens):
-            logits, loss = self.forward(inputs)
+            inputs_cropped = inputs[:, -self.sequence_length:]
+            
+            logits, loss = self.forward(inputs_cropped)
             logits = logits[:, -1, :]
+            logits = logits / temperature
             probs = F.softmax(logits, dim=1)
-            next = torch.multinomial(probs, num_samples=1)
-            inputs = torch.cat([inputs, next], dim=1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            inputs = torch.cat([inputs, next_token], dim=1)
+
+            if eos_token is not None and next_token.item() == eos_token:
+                break
         return inputs
 
 
