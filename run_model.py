@@ -45,7 +45,7 @@ while True:
         break
     input_ = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=device).unsqueeze(0)
     with torch.no_grad():
-        output = m.generate(input_, max_new_tokens=500, eos_token=eos_token, temperature=1.0)
+        output = m.generate(input_, max_new_tokens=700, eos_token=eos_token, temperature=0.7)
     print(tokenizer.decode(output[0].tolist()))
 
 
