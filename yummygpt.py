@@ -137,6 +137,8 @@ class YummyGPT(nn.Module):
         self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for i in range(n_blocks)])
         self.fl = nn.Linear(d_model, vocab_size)
 
+        self.fl.weight = self.wte.weight
+
     def forward(self, inputs, targets=None):
         logits = self.wte(inputs) #dimensions batch size * sequence length * d_model
         logits = self.wpe.forward(logits)
