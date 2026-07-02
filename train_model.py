@@ -8,12 +8,12 @@ import json
 
 training_batch_size = 8
 testing_batch_size = 8
-epochs = 1000
-T_max = 2800
-d_model = 256
+epochs = 30000
+T_max = 29000
+d_model = 384
 sequence_length = 256
 n_heads = 4
-n_blocks = 2
+n_blocks = 6
 model_exists = False
 
 model_path = input("model path?:")
@@ -63,15 +63,16 @@ if model_exists:
     m.load_state_dict(torch.load(f"saved_models/{model_path}.pth"))
 m.to(device)
 
-lr = 2e-4
+lr = 4e-5
 optim = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=0.1)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=T_max, eta_min=lr*0.2)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=T_max, eta_min=lr*0.1)
 
 print("starting training.....\n")
 print(f"vocab_size: {vocab_size}\nepochs: {epochs}")
 
 training_loss = []
 testing_loss = []
+avg_losses = []
 
 start_time = datetime.now()
 
@@ -89,6 +90,7 @@ try:
         scheduler.step()
 
         training_loss.append(loss.item())
+        avg_losses.append(sum(training_loss[-50:]) / 50 if len(training_loss) > 50 else sum(training_loss[-len(training_loss):]) / len(training_loss))
 
         if epoch % 50 == 0 or epoch == epochs - 1:
             m.eval()
@@ -96,7 +98,7 @@ try:
             with torch.no_grad():
                 xvb, yvb = testing_loader.get_batch()
                 logits_test, loss_test = m.forward(xvb, yvb)
-            print(f"epoch: {epoch}\ntraining loss:{loss.item()}\ntesting loss: {loss_test.item()}\ntime: {now_time - start_time} since {start_time}\ntime/50 epochs: {(now_time - start_time)/((epoch/50)+0.001)}\nextrapolated time of completion: {(now_time - start_time)/((epoch/50)+0.001)*(epochs/50) + start_time}")
+            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nextrapolated time of completion: {(now_time - start_time)/((epoch/50))*(epochs/50) + start_time if epoch != 0 else 0}")
             testing_loss.append(loss_test.item())
             m.train()
 
@@ -131,6 +133,7 @@ except KeyboardInterrupt:
 
     plt.plot(training_loss_epochs, training_loss, label="training loss")
     plt.plot(testing_loss_epochs, testing_loss, label="testing loss")
+    plt.plot(training_loss_epochs, avg_losses, label="average loss/50")
     plt.ylabel("loss")
     plt.xlabel("epochs")
     plt.legend()
@@ -169,6 +172,7 @@ testing_loss_epochs = [50*i for i in range(int((epochs+50)/50))]
 
 plt.plot(training_loss_epochs, training_loss, label="training loss")
 plt.plot(testing_loss_epochs, testing_loss, label="testing loss")
+plt.plot(training_loss_epochs, avg_losses, label="average loss/50")
 plt.ylabel("loss")
 plt.xlabel("epochs")
 plt.legend()
@@ -180,7 +184,7 @@ while True:
         break
     input_ = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=device).unsqueeze(0)
     with torch.no_grad():
-        output = m.generate(input_, max_new_tokens=250, eos_token=None, temperature=1.0) #set eos token to none for testing
+        output = m.generate(input_, max_new_tokens=250, eos_token=None, temperature=0.7) #set eos token to none for testing
     print(tokenizer.decode(output[0].tolist()))
 
 
