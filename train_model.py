@@ -21,8 +21,13 @@ model_path = input("model path?:")
 if os.path.exists(f"saved_models/{model_path}.pth"):
     model_exists = True
     print("found existing model path, loading....")
-    with open("saved_models/config.json", "r", encoding="utf-8") as f:
-        loaded_configs = json.load(f)
+    try:
+        with open("saved_models/config.json", "r", encoding="utf-8") as f:
+            loaded_configs = json.load(f)
+
+    except FileNotFoundError:
+        print("model config not saved!\nexiting....")
+        sys.exit(0)
 
     current_model_data = loaded_configs[model_path]
 
@@ -65,7 +70,7 @@ m.to(device)
 if device == "cuda":
     m = torch.compile(m)
 
-lr = 4e-5
+lr = 2e-4
 optim = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=0.1)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=T_max, eta_min=lr*0.1)
 
@@ -100,7 +105,7 @@ try:
             with torch.no_grad():
                 xvb, yvb = testing_loader.get_batch()
                 logits_test, loss_test = m.forward(xvb, yvb)
-            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nextrapolated time of completion: {(now_time - start_time)/((epoch/50))*(epochs/50) + start_time if epoch != 0 else 0}")
+            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nestimated time remaining: {(now_time - start_time)/((epoch/50))*(epochs/50) if epoch != 0 else 0} left")
             testing_loss.append(loss_test.item())
             m.train()
 
@@ -111,24 +116,25 @@ except KeyboardInterrupt:
     torch.save(m.state_dict(), f"saved_models/{model_path}.pth")
     print(f"saved model to 'saved_models/{model_path}.pth'\n--------------------------------------------\n")
 
-    with open("saved_models/config.json", "r", encoding="utf-8") as f:
-        loaded_configs = json.load(f)
-
-    new_config = {
-        model_path: {
-            "d_model": d_model,
-            "sequence_length": sequence_length,
-            "n_heads": n_heads,
-            "n_blocks": n_blocks
-        },
-    }
-
-    loaded_configs.update(new_config)
-
-    with open("saved_models/config.json", "w", encoding="utf-8") as f:
-        json.dump(loaded_configs, indent=4, fp=f)
-
-    print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
+    if not model_exists:
+        with open("saved_models/config.json", "r", encoding="utf-8") as f:
+            loaded_configs = json.load(f)
+    
+        new_config = {
+            model_path: {
+                "d_model": d_model,
+                "sequence_length": sequence_length,
+                "n_heads": n_heads,
+                "n_blocks": n_blocks
+            },
+        }
+    
+        loaded_configs.update(new_config)
+    
+        with open("saved_models/config.json", "w", encoding="utf-8") as f:
+            json.dump(loaded_configs, indent=4, fp=f)
+    
+        print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
 
     training_loss_epochs = [i for i in range(len(training_loss))]
     testing_loss_epochs = [50*i for i in range(len(testing_loss))]
@@ -150,24 +156,25 @@ print(f"total time training: {end_time - start_time}\n")
 torch.save(m.state_dict(), f"saved_models/{model_path}.pth")
 print(f"saved model to 'saved_models/{model_path}.pth'\n--------------------------------------------\n")
 
-with open("saved_models/config.json", "r", encoding="utf-8") as f:
-    loaded_configs = json.load(f)
-
-new_config = {
-    model_path : {
-        "d_model" : d_model,
-        "sequence_length" : sequence_length,
-        "n_heads" : n_heads,
-        "n_blocks" : n_blocks
-    },
-}
-
-loaded_configs.update(new_config)
-
-with open("saved_models/config.json", "w", encoding="utf-8") as f:
-    json.dump(loaded_configs, indent=4, fp=f)
-
-print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
+if not model_exists:
+    with open("saved_models/config.json", "r", encoding="utf-8") as f:
+        loaded_configs = json.load(f)
+    
+    new_config = {
+        model_path : {
+            "d_model" : d_model,
+            "sequence_length" : sequence_length,
+            "n_heads" : n_heads,
+            "n_blocks" : n_blocks
+        },
+    }
+    
+    loaded_configs.update(new_config)
+    
+    with open("saved_models/config.json", "w", encoding="utf-8") as f:
+        json.dump(loaded_configs, indent=4, fp=f)
+    
+    print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
 
 training_loss_epochs = [i for i in range(epochs)]
 testing_loss_epochs = [50*i for i in range(int((epochs+50)/50))]
