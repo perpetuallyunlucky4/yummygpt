@@ -62,6 +62,8 @@ m = YummyGPT(vocab_size, d_model, sequence_length=sequence_length, n_heads=n_hea
 if model_exists:
     m.load_state_dict(torch.load(f"saved_models/{model_path}.pth"))
 m.to(device)
+if device == "cuda":
+    m = torch.compile(m)
 
 lr = 4e-5
 optim = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=0.1)
