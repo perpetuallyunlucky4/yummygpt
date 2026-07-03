@@ -135,7 +135,7 @@ class YummyGPT(nn.Module):
         self.wte = nn.Embedding(vocab_size, d_model)
         self.wpe = PositionalEncodings(sequence_length, d_model)
         self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for i in range(n_blocks)])
-        self.fl = nn.Linear(d_model, vocab_size)
+        self.fl = nn.Linear(d_model, vocab_size, bias=False)
 
         self.fl.weight = self.wte.weight
 
