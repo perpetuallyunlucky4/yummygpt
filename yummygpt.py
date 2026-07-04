@@ -127,7 +127,7 @@ class GPTBlock(nn.Module):
         return logits
 
 class YummyGPT(nn.Module):
-    def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2, init_mean=0.0, init_std=0.02):
+    def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2, init_mean=0.0, init_std=0.02, weight_tying=True):
         super().__init__()
 
         self.sequence_length = sequence_length
@@ -139,7 +139,8 @@ class YummyGPT(nn.Module):
 
         self.init_weights(init_mean, init_std)
 
-        self.fl.weight = self.wte.weight
+        if weight_tying:
+            self.fl.weight = self.wte.weight
 
     def init_weights(self, mean=0.0, std=0.02):
         for name, layer in self.named_modules():
