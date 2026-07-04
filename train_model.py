@@ -105,7 +105,7 @@ try:
             with torch.no_grad():
                 xvb, yvb = testing_loader.get_batch()
                 logits_test, loss_test = m.forward(xvb, yvb)
-            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nestimated time remaining: {(now_time - start_time)/((epoch/50))*(epochs/50) if epoch != 0 else 0} left")
+            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2) if len(training_loss) > 50 else round(sum(training_loss[-len(training_loss):])/len(training_loss), 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nestimated time remaining: {(now_time - start_time)/((epoch/50))*(epochs/50) if epoch != 0 else 0} left")
             testing_loss.append(loss_test.item())
             m.train()
 
