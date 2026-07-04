@@ -68,7 +68,9 @@ if model_exists:
     m.load_state_dict(torch.load(f"saved_models/{model_path}.pth"))
 m.to(device)
 if device == "cuda":
+    print("compiling...")
     m = torch.compile(m)
+    print("done")
 
 lr = 2e-4
 optim = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=0.1)
