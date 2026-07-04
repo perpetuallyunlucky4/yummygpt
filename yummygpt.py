@@ -127,17 +127,31 @@ class GPTBlock(nn.Module):
         return logits
 
 class YummyGPT(nn.Module):
-    def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2):
+    def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2, init_mean=0.0, init_std=0.02):
         super().__init__()
 
         self.sequence_length = sequence_length
-        
+
         self.wte = nn.Embedding(vocab_size, d_model)
         self.wpe = PositionalEncodings(sequence_length, d_model)
         self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for i in range(n_blocks)])
         self.fl = nn.Linear(d_model, vocab_size, bias=False)
 
+        self.init_weights(init_mean, init_std)
+
         self.fl.weight = self.wte.weight
+
+    def init_weights(self, mean=0.0, std=0.02):
+        for name, layer in self.named_modules():
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.normal_(layer.weight, mean=mean, std=std)
+                if layer.bias is not None:
+                    torch.nn.init.zeros_(layer.bias)
+                print(f"initialized Linear {name}")
+
+            elif isinstance(layer, nn.Embedding):
+                torch.nn.init.normal_(layer.weight, mean=mean, std=std)
+                print(f"initialized Embedding {name}")
 
     def forward(self, inputs, targets=None):
         logits = self.wte(inputs) #dimensions batch size * sequence length * d_model
@@ -159,7 +173,7 @@ class YummyGPT(nn.Module):
             temperature = 1.0
         for i in range(max_new_tokens):
             inputs_cropped = inputs[:, -self.sequence_length:]
-            
+
             logits, loss = self.forward(inputs_cropped)
             logits = logits[:, -1, :]
             logits = logits / temperature
