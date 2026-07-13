@@ -1,52 +1,41 @@
 import torch
+import torch.nn as nn
+from torch.nn import functional as F
+import matplotlib.pyplot as plt
+import math
+from yummygpt import TransformerFinal
 import tiktoken
-from yummygpt import YummyGPT
-import json
-import os, sys
-
-model_path = input("model path?:")
-
-if not os.path.exists(f"saved_models/{model_path}.pth"):
-    print("Model path does not exist!\nexiting....")
-    sys.exit(0)
-
-with open("saved_models/config.json", "r", encoding="utf-8") as f:
-    loaded_configs = json.load(f)
-
-try:
-    current_model_data = loaded_configs[model_path]
-except KeyError:
-    print("model config not saved!\nexiting.....")
-    sys.exit(0)
-
-d_model = current_model_data["d_model"]
-sequence_length = current_model_data["sequence_length"]
-n_heads = current_model_data["n_heads"]
-n_blocks = current_model_data["n_blocks"]
+import argparse
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(device)
 
-tokenizer = tiktoken.get_encoding('gpt2')
-eos_token = tokenizer.eot_token
-vocab_size = tokenizer.n_vocab
+parser = argparse.ArgumentParser()
+parser.add_argument("-path", "--path", type=str, required=True)
 
-m = YummyGPT(vocab_size, d_model, sequence_length=sequence_length, n_heads=n_heads, n_blocks=n_blocks)
-m.load_state_dict(torch.load(f"saved_models/{model_path}.pth"))
-m.to(device)
-m.eval()
+args = parser.parse_args()
 
-print(m)
-print(f"\n{round(sum(p.numel() for p in m.parameters() if p.requires_grad)/ 1000000, 3)}M parameters\n")
+model_saved = torch.load(f"saved_models/{args.path}.pth", map_location=torch.device(device))
 
-while True:
-    in_text = input("->:")
-    if in_text == "exit":
-        break
-    input_ = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=device).unsqueeze(0)
-    with torch.no_grad():
-        output = m.generate(input_, max_new_tokens=700, eos_token=eos_token, temperature=0.7)
-    print(tokenizer.decode(output[0].tolist()))
+torch.manual_seed(model_saved["hyper_params"]["torch_seed"])
 
+tokenizer = tiktoken.get_encoding("gpt2")
+eot = tokenizer.eot_token
 
+if __name__ == "__main__":
+    m = TransformerFinal(model_saved["hyper_params"]["d_model"], model_saved["hyper_params"]["context_len"], model_saved["hyper_params"]["n_heads"], model_saved["hyper_params"]["n_blocks"], model_saved["hyper_params"]["vocab_size"], model_saved["hyper_params"]["dropout"], model_saved["hyper_params"]["weight_tying"]).to(device)
+    print("loading state dicts....")
+    m.load_state_dict(model_saved["model_state_dict"])
+    print("done")
+    
+    while True:
+        in_text = input("->:")
+        if in_text == "exit":
+            break
 
+        tokens = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"})).unsqueeze(0)
+
+        with torch.no_grad():
+            out_tokens = m.generate_tokens(tokens, max_iters=500, temp=0.7, eos=eot)
+
+        print(out_tokens)
+        print(f"->:{tokenizer.decode(out_tokens[0].tolist())}")
