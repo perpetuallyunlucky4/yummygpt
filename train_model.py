@@ -1,204 +1,130 @@
 import torch
-import tiktoken
-from datetime import datetime
-from yummygpt import YummyGPT, DataLoader
+import torch.nn as nn
+from torch.nn import functional as F
 import matplotlib.pyplot as plt
-import os, sys
-import json
+import tiktoken
+from yummygpt import TransformerFinal, DataLoader
+from datetime import datetime
+import argparse
+import math
 
-training_batch_size = 8
-testing_batch_size = 8
-epochs = 30000
-T_max = 29000
-d_model = 384
-sequence_length = 256
-n_heads = 4
-n_blocks = 6
-model_exists = False
 
-model_path = input("model path?:")
+tokenizer = tiktoken.get_encoding("gpt2")
 
-if os.path.exists(f"saved_models/{model_path}.pth"):
-    model_exists = True
-    print("found existing model path, loading....")
+parser = argparse.ArgumentParser()
+parser.add_argument("-path", "--path", required=True)
+
+args = parser.parse_args()
+model_path = args.path #get model path
+
+hyper_params = {
+    #architectire
+    "d_model": 384,
+    "n_blocks": 6,
+    "n_heads": 4,
+    "vocab_size" : tokenizer.n_vocab,
+    "weight_tying": True,
+    "dropout": 0.1,
+
+    #training
+    "batch_size": 8,
+    "context_len": 256,
+    "steps": 20000,
+    "T_max": 18000,
+    "learn_rate": 3e-4,
+    "train_split":0.9,
+    "max_norm": 1.0,
+
+    #evaluation
+    "eval_interval": 50,
+    "eval_batch_size": 8,
+
+    #device settings
+    "device": "cuda" if torch.cuda.is_available() else "cpu",
+    "torch_seed": 1234
+} #define hyper parameters
+
+torch.manual_seed(hyper_params["torch_seed"]) #manual seed for reproducubility
+
+if __name__ == "__main__":
+    with open(f"model_train_files/{model_path}.txt", "r") as f:
+        text = f.read()
+
+    data = torch.tensor(tokenizer.encode(text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=hyper_params["device"]) #encode text data from file
+    train_data = data[:int(hyper_params["train_split"]*len(data))]
+    eval_data = data[int(hyper_params["train_split"]*len(data)):] #get train and test splits
+
+    trainloader = DataLoader(hyper_params["batch_size"], hyper_params["context_len"], train_data)
+    evalloader = DataLoader(hyper_params["eval_batch_size"], hyper_params["context_len"], eval_data) #initialize data loaders
+
+    m = TransformerFinal(hyper_params["d_model"], hyper_params["context_len"], hyper_params["n_heads"], hyper_params["n_blocks"], hyper_params["vocab_size"], hyper_params["dropout"], hyper_params["weight_tying"]).to(hyper_params["device"])
+    optimizer = torch.optim.AdamW(m.parameters(), lr=hyper_params["learn_rate"])
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=hyper_params["T_max"], eta_min=hyper_params["learn_rate"]*0.1) #initalize model, optimizer, and scheduler
+
+    training_losses = []
+    eval_losses = []
+    avg_training_losses = []
+
+    print("starting training....\n\n\n\n\n\n\n")
+    start_time = datetime.now()
+
     try:
-        with open("saved_models/config.json", "r", encoding="utf-8") as f:
-            loaded_configs = json.load(f)
+        for step in range(hyper_params["steps"]):
+            inputs, targets = trainloader.generate() #generate inputs and targets from dataset
 
-    except FileNotFoundError:
-        print("model config not saved!\nexiting....")
-        sys.exit(0)
+            logits, loss = m(inputs, targets) #generate logits and loss from inputs and targets
 
-    current_model_data = loaded_configs[model_path]
+            optimizer.zero_grad(set_to_none=True)
 
-    d_model = current_model_data["d_model"]
-    sequence_length = current_model_data["sequence_length"]
-    n_heads = current_model_data["n_heads"]
-    n_blocks = current_model_data["n_blocks"]
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(m.parameters(), max_norm=hyper_params["max_norm"])
+            optimizer.step()
+            scheduler.step() #backwards propagation and step the optimizer and scheduler
 
-print(f"d_model: {d_model}\nsequence_length: {sequence_length}\nn_heads: {n_heads}\nn_blocks: {n_blocks}\n")
+            training_losses.append(loss.item())
+            avg_training_losses.append(sum(training_losses[:50])/50 if len(training_losses) > 50 else sum(training_losses[:len(training_losses)])/len(training_losses)) #log the losses
 
-if not os.path.exists(f"{model_path}.txt"):
-    print("Training path does not exist!\nexiting....")
-    sys.exit(0)
+            if step % hyper_params["eval_interval"] == 0 or step == hyper_params["steps"] - 1:
+                m.eval()
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(device)
+                now_time = datetime.now()
 
-with open(f"{model_path}.txt", "r") as f:
-    text = f.read()
+                with torch.no_grad():
+                    eval_inputs, eval_targets = evalloader.generate()
+                    eval_logits, eval_loss = m(eval_inputs, eval_targets)
 
-tokenizer = tiktoken.get_encoding('gpt2')
-eos_token = tokenizer.eot_token
+                #print(f"step: {step}\ntraining loss:{loss.item():.2f}\ntesting loss: {eval_loss.item():.2f}\naverage training loss / 50 steps: {round(sum(training_losses[-50:]) / 50, 2) if len(training_losses) > 50 else round(sum(training_losses[-len(training_losses):]) / len(training_losses), 2)}\ntime / 50 epochs: {(now_time - start_time) / ((step / 50)) if step != 0 else 0}\nestimated time remaining: {(now_time - start_time) / step * (hyper_params['steps']) - (now_time - start_time) if step != 0 else 0} left\n" + "[" + "#" * round(step / hyper_params['steps']*50) + "-" * round(50 - step / hyper_params['steps']*50) + "]\n\x1b[7A")
+                print("\x1b[7A")
+                print(f"step: {step}")
+                print(f"training loss:{loss.item():.2f}")
+                print(f"testing loss: {eval_loss.item():.2f}")
+                print(f"average training loss / 50 steps: {round(sum(training_losses[-50:]) / 50, 2) if len(training_losses) > 50 else round(sum(training_losses[-len(training_losses):]) / len(training_losses), 2)}")
+                print(f"time / 50 epochs: {(now_time - start_time) / ((step / 50)) if step != 0 else 0}")
+                print(f"estimated time remaining: {(now_time - start_time) / step * (hyper_params['steps']) - (now_time - start_time) if step != 0 else 0} left")
+                print("[" + "#" * round(step / hyper_params['steps']*50) + "-" * round(50 - step / hyper_params['steps']*50) + "]") #print data
 
-vocab_size = tokenizer.n_vocab
+                eval_losses.append(eval_loss.item())
 
-print("encoding data....")
-data = torch.tensor(tokenizer.encode(text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=device)
-print("done\n")
+                m.train()
 
-training_data = data[:int(len(data)*0.9)]
-testing_data = data[int(len(data)*0.9):]
+    except KeyboardInterrupt:
+        print("stopping....")
 
-training_loader = DataLoader(training_data, training_batch_size, sequence_length)
-testing_loader = DataLoader(testing_data, testing_batch_size, sequence_length)
+    finally:
+        end_time = datetime.now()
 
-m = YummyGPT(vocab_size, d_model, sequence_length=sequence_length, n_heads=n_heads, n_blocks=n_blocks)
-if model_exists:
-    m.load_state_dict(torch.load(f"saved_models/{model_path}.pth"))
-m.to(device)
-if device == "cuda":
-    print("compiling...")
-    m = torch.compile(m)
-    print("done")
+        print(f"total time training: {end_time - start_time}")
+        print("saving model....")
+        torch.save({"model_state_dict": m.state_dict(),
+                    "hyper_params": hyper_params,
+                    "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict()
+        }, f"saved_models/{model_path}.pth")
+        print("done") #save model to path file
 
-lr = 2e-4
-optim = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=0.1)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=T_max, eta_min=lr*0.1)
+        plt.plot(training_losses, color="red")
+        plt.plot([50*i for i in range(len(eval_losses))], eval_losses, color="green")
+        plt.plot(avg_training_losses, color="blue")
 
-print("starting training.....\n")
-print(f"vocab_size: {vocab_size}\nepochs: {epochs}")
-
-training_loss = []
-testing_loss = []
-avg_losses = []
-
-start_time = datetime.now()
-
-try:
-    for epoch in range(epochs):
-        xb, yb = training_loader.get_batch()
-
-        logits, loss = m.forward(xb, yb)
-        optim.zero_grad(set_to_none=True)
-        loss.backward()
-
-        torch.nn.utils.clip_grad_norm_(m.parameters(), max_norm=1.0)
-
-        optim.step()
-        scheduler.step()
-
-        training_loss.append(loss.item())
-        avg_losses.append(sum(training_loss[-50:]) / 50 if len(training_loss) > 50 else sum(training_loss[-len(training_loss):]) / len(training_loss))
-
-        if epoch % 50 == 0 or epoch == epochs - 1:
-            m.eval()
-            now_time = datetime.now()
-            with torch.no_grad():
-                xvb, yvb = testing_loader.get_batch()
-                logits_test, loss_test = m.forward(xvb, yvb)
-            print(f"epoch: {epoch}\ntraining loss:{loss.item():.2f}\ntesting loss: {loss_test.item():.2f}\naverage training loss / 50 epochs: {round(sum(training_loss[-50:])/50, 2) if len(training_loss) > 50 else round(sum(training_loss[-len(training_loss):])/len(training_loss), 2)}\ntime: {now_time - start_time} since {start_time}\ntime / 50 epochs: {(now_time - start_time)/((epoch/50)) if epoch != 0 else 0}\nestimated time remaining: {(now_time - start_time)/((epoch/50))*(epochs/50) if epoch != 0 else 0} left")
-            testing_loss.append(loss_test.item())
-            m.train()
-
-except KeyboardInterrupt:
-    end_time = datetime.now()
-    print(f"total time training: {end_time - start_time}\n")
-
-    torch.save(m.state_dict(), f"saved_models/{model_path}.pth")
-    print(f"saved model to 'saved_models/{model_path}.pth'\n--------------------------------------------\n")
-
-    if not model_exists:
-        with open("saved_models/config.json", "r", encoding="utf-8") as f:
-            loaded_configs = json.load(f)
-    
-        new_config = {
-            model_path: {
-                "d_model": d_model,
-                "sequence_length": sequence_length,
-                "n_heads": n_heads,
-                "n_blocks": n_blocks
-            },
-        }
-    
-        loaded_configs.update(new_config)
-    
-        with open("saved_models/config.json", "w", encoding="utf-8") as f:
-            json.dump(loaded_configs, indent=4, fp=f)
-    
-        print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
-
-    training_loss_epochs = [i for i in range(len(training_loss))]
-    testing_loss_epochs = [50*i for i in range(len(testing_loss))]
-
-    plt.plot(training_loss_epochs, training_loss, label="training loss")
-    plt.plot(testing_loss_epochs, testing_loss, label="testing loss")
-    plt.plot(training_loss_epochs, avg_losses, label="average loss/50")
-    plt.ylabel("loss")
-    plt.xlabel("epochs")
-    plt.legend()
-    plt.show()
-
-    print("ending program.....")
-    sys.exit(0)
-
-end_time = datetime.now()
-print(f"total time training: {end_time - start_time}\n")
-
-torch.save(m.state_dict(), f"saved_models/{model_path}.pth")
-print(f"saved model to 'saved_models/{model_path}.pth'\n--------------------------------------------\n")
-
-if not model_exists:
-    with open("saved_models/config.json", "r", encoding="utf-8") as f:
-        loaded_configs = json.load(f)
-    
-    new_config = {
-        model_path : {
-            "d_model" : d_model,
-            "sequence_length" : sequence_length,
-            "n_heads" : n_heads,
-            "n_blocks" : n_blocks
-        },
-    }
-    
-    loaded_configs.update(new_config)
-    
-    with open("saved_models/config.json", "w", encoding="utf-8") as f:
-        json.dump(loaded_configs, indent=4, fp=f)
-    
-    print("saved model config to 'saved_models/config.json'\n--------------------------------------------\n")
-
-training_loss_epochs = [i for i in range(epochs)]
-testing_loss_epochs = [50*i for i in range(int((epochs+50)/50))]
-
-plt.plot(training_loss_epochs, training_loss, label="training loss")
-plt.plot(testing_loss_epochs, testing_loss, label="testing loss")
-plt.plot(training_loss_epochs, avg_losses, label="average loss/50")
-plt.ylabel("loss")
-plt.xlabel("epochs")
-plt.legend()
-plt.show()
-
-while True:
-    in_text = input("->:")
-    if in_text == "exit":
-        break
-    input_ = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=device).unsqueeze(0)
-    with torch.no_grad():
-        output = m.generate(input_, max_new_tokens=250, eos_token=None, temperature=0.7) #set eos token to none for testing
-    print(tokenizer.decode(output[0].tolist()))
-
-
-
-
+        plt.show() #plot losses
 
