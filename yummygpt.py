@@ -1,190 +1,180 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import matplotlib.pyplot as plt
 import math
 
-class DataLoader:
-    def __init__(self, tokens, batch_size, sequence_length):
-        self.tokens = tokens
+
+class DataLoader():
+    def __init__(self, batch_size, context_len, data):
         self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.current_pos = 0
+        self.context_len = context_len
+        self.data = data
 
-    def get_batch(self):
-        b, c = self.batch_size, self.sequence_length
-        max_start = len(self.tokens) - c - 1
+    def generate(self):
+        indexes = torch.randint(0, len(self.data) - self.context_len, (self.batch_size,)) #generate random starts to sample from the data
 
-        starts = torch.randint(0, max_start, (b, ), device=self.tokens.device)
+        inputs = torch.stack([self.data[start:start+self.context_len] for start in indexes])
+        targets = torch.stack([self.data[start+1:start+self.context_len+1] for start in indexes]) #stack all the inputs and targets into a (batch_size, context_len) shaped tensor
 
-        x = torch.stack([
-            self.tokens[s : s + c] for s in starts
-        ])
+        return inputs, targets
 
-        y = torch.stack([
-            self.tokens[s + 1: s + c + 1] for s in starts
-        ])
 
-        return x, y
-
-class PositionalEncodings(nn.Module):
-    def __init__(self, sequence_length, d_model):
+class PositionalEmbeddings(nn.Module):
+    def __init__(self, context_len, d_model, scale=10000):
         super().__init__()
-        pe = torch.zeros(sequence_length, d_model)
-        position = torch.arange(0, sequence_length, dtype=torch.float).unsqueeze(1)#dimensions sequence length, 1
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # dimensions d_model/2 , 1
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)#shape 1, sequence_length, d_model
+        self.register_buffer("embedding", torch.zeros(context_len, d_model)) #register as a buffer so that it moves device with the model
 
-        self.register_buffer('pe', pe)
+        positions = torch.arange(context_len, dtype=torch.float32).view(context_len, 1) #arange of all the possible rows of each token
+
+        denominators = scale ** (-torch.arange(0, d_model, 2, dtype=torch.float32)/d_model).view(1, d_model//2) #different frequencies of waves based on how deep you are through d_model
+
+        self.embedding[:, 0::2] = torch.sin(positions @ denominators) #insert values into alternating d_model iteration
+        self.embedding[:, 1::2] = torch.cos(positions @ denominators) #multiply each position by the corresponding denominator for each d_model iteration
 
     def forward(self, logits):
-        return logits + self.pe[:, :logits.size(1), :]
+        return logits + self.embedding[:logits.shape[1], :] #add only the first sequence length size of the positional encoding to the logits
 
-class SelfAttention(nn.Module):
-    def __init__(self, d_model):
-        super().__init__()
 
-        self.query = nn.Linear(d_model, d_model)
-        self.key = nn.Linear(d_model, d_model)
-        self.value = nn.Linear(d_model, d_model)
-        self.out = nn.Linear(d_model, d_model)
-
-    def forward(self, inputs):
-        batch_size, sequence_length, d_model = inputs.shape
-
-        q = self.query(inputs)
-        k = self.key(inputs)
-        v = self.value(inputs)
-
-        attention_scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_model)
-        mask = torch.triu(torch.ones(sequence_length, sequence_length), diagonal=1).bool().to(inputs.device)
-        attention_scores = attention_scores.masked_fill(mask, float('-inf'))
-
-        attention_probs = torch.softmax(attention_scores, dim=-1)
-        attention = torch.matmul(attention_probs, v)
-
-        out = self.out(attention)
-
-        return out
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads):
+class MultiheadSelfAttention(nn.Module):
+    def __init__(self, context_len, d_model, n_heads):
         super().__init__()
 
         self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
+        self.d_head = d_model // self.n_heads
 
-        assert (self.n_heads * self.head_dim == d_model)
+        self.register_buffer("tril_mask", torch.tril(torch.ones(context_len, context_len))) #register as a buffer so it moves device with the model
 
-        self.query = nn.Linear(d_model, d_model)
-        self.key = nn.Linear(d_model, d_model)
-        self.value = nn.Linear(d_model, d_model)
-        self.drop = nn.Dropout(0.1)
-        self.out = nn.Linear(d_model, d_model)
+        assert self.n_heads * self.d_head == d_model
 
-    def forward(self, inputs):
-        batch_size, sequence_length, d_model = inputs.shape
-
-        q = self.query(inputs).view(batch_size, sequence_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-        k = self.key(inputs).view(batch_size, sequence_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-        v = self.value(inputs).view(batch_size, sequence_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-
-        attention_scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        mask = torch.triu(torch.ones(sequence_length, sequence_length), diagonal=1).bool().to(inputs.device)
-        attention_scores = attention_scores.masked_fill(mask, float('-inf'))
-
-        attention_probs = torch.softmax(attention_scores, dim=-1)
-
-        attention = torch.matmul(self.drop(attention_probs), v)
-        attention = attention.permute(0, 2, 1, 3).contiguous()
-        attention = attention.view(batch_size, sequence_length, d_model)
-
-        out = self.out(attention)
-
-        return out
-
-class GPTBlock(nn.Module):
-    def __init__(self, d_model, n_heads=4):
-        super().__init__()
-        self.att = MultiHeadAttention(d_model, n_heads)
-        self.fcn = nn.Sequential(
-            nn.Linear(d_model, 4 * d_model),
-            nn.GELU(),
-            nn.Linear(4 * d_model, d_model)
-        )
-        self.ln1 = nn.LayerNorm(d_model)
-        self.ln2 = nn.LayerNorm(d_model)
-        self.drop = nn.Dropout(0.1)
+        self.query = nn.Linear(d_model, d_model, bias=False)
+        self.key = nn.Linear(d_model, d_model, bias=False)
+        self.value = nn.Linear(d_model, d_model, bias=False)
+        self.proj = nn.Linear(d_model, d_model, bias=False)#will be split into heads later
 
     def forward(self, logits):
-        att_logits = self.att.forward(logits)
-        adn_logits = self.ln1(logits + att_logits)
-        logits = self.drop(adn_logits)
-        logits = self.fcn(logits)
-        logits = self.ln2(logits + adn_logits)
+        batch_size, context_len, d_model = logits.shape
+
+        q = self.query(logits)
+        k = self.key(logits)
+        v = self.value(logits)#outputs shape (batch_size, context_length, d_model
+
+        q = q.view(batch_size, context_len, self.n_heads, self.d_head).permute(0, 2, 1, 3)#we split the output of the linear layer (d_model nodes) into heads. They do not talk to each other and we only consider each chunk of d_head output nodes from the input of all the d_model inputs
+        k = k.view(batch_size, context_len, self.n_heads, self.d_head).permute(0, 2, 1, 3)#next, swap the second and first index of each tensor to turn the n_heads dimension into a batch kinda thing, performing matrix mult on only the last 2 dimensions
+        v = v.view(batch_size, context_len, self.n_heads, self.d_head).permute(0, 2, 1, 3)#produces batches of heads containing tensors shape (context_len, d_head)
+
+        attention_scores = q @ k.transpose(-1, -2) #transpose to produce a correct multiplication of shape (batch_size, n_heads, context_len, context_len)
+        attention_scores.masked_fill_(self.tril_mask[:context_len, :context_len]==0, float('-inf')) #mask the affinitiy matrix
+
+        attention_probs = F.softmax(attention_scores/math.sqrt(self.d_head), dim=-1) #softmax to normalize and bring -inf values to zero
+
+        attention = attention_probs @ v #matrix mult the masked affinity matrix with the value -- outputs shape (batch_size, n_heads, context_length, d_head)
+        attention = attention.permute(0, 2, 1, 3).contiguous().view(batch_size, context_len, d_model) #swap the context_len and n_heads dimensions and make contiguous, then flatten the tensor into its initial shape (batch_size, context_len, d_model)
+
+        logits = self.proj(attention) #run all the d_model paramers that are concatanated through all the heads through a final output projection to "summarize"
+
+        return logits #(batch_size, context_len, d_model)
+
+        #note: the matrix mults are all batch wise through batch_size and n_heads
+
+
+class Block(nn.Module):
+    def __init__(self, context_len, d_model, n_heads, dropout):
+        super().__init__()
+
+        self.att = MultiheadSelfAttention(context_len, d_model, n_heads) #init multihead attention
+        self.ffw = nn.Sequential(
+            nn.Linear(d_model, 4*d_model),
+            nn.GELU(),
+            nn.Linear(4*d_model, d_model)
+        ) #feed forward neural network
+
+        self.ln_att = nn.LayerNorm(d_model)
+        self.ln_ffw = nn.LayerNorm(d_model) #pre layer norm used here
+
+        self.drop = nn.Dropout(dropout) #only need one dropout, because it drops randomly every call
+
+    def forward(self, logits):
+        logits_att = self.att(self.ln_att(logits)) #get the output from self attention after normalizing
+        logits = logits + self.drop(logits_att) #residual connection after dropout
+
+        logits_ffw = self.ffw(self.ln_ffw(logits)) #get feed forward output after layer normalization
+        logits = logits + self.drop(logits_ffw) #more residual connection after dropout
 
         return logits
 
-class YummyGPT(nn.Module):
-    def __init__(self, vocab_size, d_model, sequence_length, n_heads=4, n_blocks=2, init_mean=0.0, init_std=0.02, weight_tying=True):
+
+class TransformerFinal(nn.Module):
+    def __init__(self, d_model, context_len, n_heads, n_blocks, vocab_size, dropout=0.1, weight_tying=True):
         super().__init__()
 
-        self.sequence_length = sequence_length
+        self.tok_embd = nn.Embedding(vocab_size, d_model)
+        self.pos_embd = PositionalEmbeddings(context_len, d_model) #init embeddings
 
-        self.wte = nn.Embedding(vocab_size, d_model)
-        self.wpe = PositionalEncodings(sequence_length, d_model)
-        self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for i in range(n_blocks)])
-        self.fl = nn.Linear(d_model, vocab_size, bias=False)
+        self.blocks = nn.ModuleList(Block(context_len, d_model, n_heads, dropout) for i in range(n_blocks)) #stack n_blocks blocks together
 
-        self.init_weights(init_mean, init_std)
+        self.ln_final = nn.LayerNorm(d_model)
+
+        self.line_out = nn.Linear(d_model, vocab_size) #final linear layer to transform from d_model to vocab_size
 
         if weight_tying:
-            self.fl.weight = self.wte.weight
+            self.tok_embd.weight = self.line_out.weight #weight tying from the input embedding to the final output layer. Since they both encode and decode from vocab_size to d_model, we can make their weights equal
 
-    def init_weights(self, mean=0.0, std=0.02):
+        self.init_weights()
+
+    def init_weights(self, std=0.02, mean=0.0):
+        print("initializing weights....")
         for name, layer in self.named_modules():
+            if isinstance(layer, nn.Embedding):
+                nn.init.normal_(layer.weight, mean, std)
+                print(f"initialized nn.Embedding {layer} {name}") #set embedding weights mean and standard deviation
+
             if isinstance(layer, nn.Linear):
-                torch.nn.init.normal_(layer.weight, mean=mean, std=std)
+                nn.init.normal_(layer.weight, mean, std)
                 if layer.bias is not None:
-                    torch.nn.init.zeros_(layer.bias)
-                print(f"initialized Linear {name}")
+                    nn.init.zeros_(layer.bias)
+                print(f"initialized nn.Linear {layer} {name}") #set linear layers weights mean and standard deviation
+        print("done")
 
-            elif isinstance(layer, nn.Embedding):
-                torch.nn.init.normal_(layer.weight, mean=mean, std=std)
-                print(f"initialized Embedding {name}")
+    def forward(self, tokens, targets=None):
+        logits = self.tok_embd(tokens)
+        logits = self.pos_embd(logits) #encode tokens and position
 
-    def forward(self, inputs, targets=None):
-        logits = self.wte(inputs) #dimensions batch size * sequence length * d_model
-        logits = self.wpe.forward(logits)
         for block in self.blocks:
-            logits = block.forward(logits)
-        logits = self.fl(logits)
+            logits = block(logits) #run logits through all the blocks sequentially
+
+        logits = self.ln_final(logits)
+        logits = self.line_out(logits) #final layer norm and neural network to expand out from d_model to vocab_size
+
         loss = None
+
         if targets is not None:
-            batch_size, sequence_length, d_model = logits.shape
-            logits = logits.view(batch_size * sequence_length, d_model)
-            targets = targets.view(batch_size * sequence_length)
-            loss = F.cross_entropy(logits, targets)
+            batch_size, context_length, vocab_size = logits.shape
+            logits = logits.view(batch_size * context_length, vocab_size)
+            targets = targets.view(batch_size * context_length)
+            loss = F.cross_entropy(logits, targets) #calculate loss from the targets if targets is not None
+
         return logits, loss
 
-    def generate(self, inputs, max_new_tokens, eos_token=None, temperature=1.0):
-        if temperature == 0:
-            print("\ntemperature set to 1.0\n")
-            temperature = 1.0
-        for i in range(max_new_tokens):
-            inputs_cropped = inputs[:, -self.sequence_length:]
+    def generate_tokens(self, tokens, max_iters=1000, temp=1.0, eos=None):
+        for iter in range(max_iters):
+            with torch.no_grad():
+                logits, loss = self.forward(tokens) #run tokens through transformer
+                logits = logits[:, -1, :] #take all the batches, the last token in the sequence, and all the outputs of the final token
+                logits = logits/temp
+                out_probs = F.softmax(logits, dim=1) #softmax the output to get probabililties
+                out_token = torch.multinomial(out_probs, num_samples=1) #sample from the probabilities
+                tokens = torch.cat((tokens, out_token), dim=1) #append the final token to all the tokens
 
-            logits, loss = self.forward(inputs_cropped)
-            logits = logits[:, -1, :]
-            logits = logits / temperature
-            probs = F.softmax(logits, dim=1)
-            next_token = torch.multinomial(probs, num_samples=1)
-            inputs = torch.cat([inputs, next_token], dim=1)
+                if eos is not None and out_token.item() == eos:
+                    break #break if final token is an endoftext token
 
-            if eos_token is not None and next_token.item() == eos_token:
-                break
-        return inputs
+        return tokens #return the final list of tokens
+
+
+
+
+
 
 
 
