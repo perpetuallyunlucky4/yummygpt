@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import matplotlib.pyplot as plt
 import math
+import numpy as np
 
 
 class DataLoader():
@@ -14,8 +15,8 @@ class DataLoader():
     def generate(self):
         indexes = torch.randint(0, len(self.data) - self.context_len, (self.batch_size,)) #generate random starts to sample from the data
 
-        inputs = torch.stack([self.data[start:start+self.context_len] for start in indexes])
-        targets = torch.stack([self.data[start+1:start+self.context_len+1] for start in indexes]) #stack all the inputs and targets into a (batch_size, context_len) shaped tensor
+        inputs = torch.stack([torch.from_numpy(np.array(self.data[start:start+self.context_len], dtype=np.int64)) for start in indexes]) #stack all the inputs and targets into a (batch_size, context_len) shaped tensor
+        targets = torch.stack([torch.from_numpy(np.array(self.data[start+1:start+self.context_len+1], dtype=np.int64)) for start in indexes]) #use torch.from_numpy(np.array()) to get nparray slices from the memmap and turn into tensor
 
         return inputs, targets
 
