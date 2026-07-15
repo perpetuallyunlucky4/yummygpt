@@ -8,7 +8,6 @@ from yummygpt import TransformerFinal, DataLoader
 from datetime import datetime
 import argparse
 import math
-import numpy as np
 
 
 tokenizer_base = tiktoken.get_encoding("gpt2")
