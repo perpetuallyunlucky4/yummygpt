@@ -32,7 +32,7 @@ if __name__ == "__main__":
         if in_text == "exit":
             break
 
-        tokens = torch.tensor(tokenizer.encode(in_text, allowed_special={"<|endoftext|>"})).unsqueeze(0)
+        tokens = torch.tensor(tokenizer.encode(in_text, allowed_special="all")).unsqueeze(0)
 
         with torch.no_grad():
             out_tokens = m.generate_tokens(tokens, max_iters=500, temp=0.7, eos=eot)
