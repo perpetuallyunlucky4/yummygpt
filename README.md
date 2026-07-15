@@ -1,7 +1,6 @@
 # yummygpt
 A GPT-style Decoder only language model\
-The model uses tiktoken's `gpt-2` tokenizer and `'<|endoftext|>'` as its eot_token and AdamW as its optimizer.
-The code also allows for GPU acceleration(untested).
+The code also allows for GPU to be used.
 
 ## Training on the Wizard of Oz
 The first test was with a Wizard of Oz text file with no endoftext tokens, I used 
@@ -44,13 +43,13 @@ To download the dataset and create a text file, run load_TinyStories.py. The cod
 While experimenting with the dataset, I added model state_dict saving and config.json to save the model state and configuration after a KeyboardInterrupt. I also added weight tying from the input embedding `wte` and the final layer `fl`
 `self.wte.weight = self.fl.weight`
 
-I trained multiple models until the loss plateaued, all with 4 heads and 2, 4, and 6 decoder blocks.
+I trained multiple models until the loss plateaued, all with 4 heads and 2, 4, 6 and 10 decoder blocks.
 
 prompt: 
 > Once, there was a shark named Ben. Ben loved to eat
 
-2 blocks:
-```
+<details>
+  <summary>2 blocks</summary>
 Once, there was a shark named Ben. Ben loved to eat beef. They would eat carrots and lettuce. One day, Ben and his friends went to the sea. They were playing and having fun.
 
 When they got home, Ben saw a big bear on the stove. He wanted to show Ben his friends. He asked them to come inside and play with him. Ben said yes and they all went to the kitchen.
@@ -58,10 +57,9 @@ When they got home, Ben saw a big bear on the stove. He wanted to show Ben his f
 Ben said, "Thank you, Ben! You are a good friend!"
 
 Ben and his friends ate the dessert. They were happy and played together. They all had a lot of fun. They had a lot of fun together.<|endoftext|>
-```
-
-4 blocks:
-```
+</details>
+<details>
+<summary>4 blocks</summary>
 Once, there was a shark named Ben. Ben loved to eat fish. One day, Ben saw a big shell in the park. He wanted to help the shell.
 
 Ben said to the shark, "Don't worry, Ben. Let's go to the park and we can find a way to find a way to get there."
@@ -81,9 +79,9 @@ Ben was not angry. He did not want to play with the rain, but he was not happy. 
 Ben walked towards the cloud and look at the sky. It is not a sun, or a rainbow. It has a rainbow colors. It is a tree with a rainbow. It can make it grow bigger and bigger and bigger. It makes a rainbow. Ben and Lily are sad.
 
 They hoped the rain would not go. They hoped the rain would go on the coats. They hoped the sky would come back. They hoped the rain would
-```
-6 blocks: 
-```
+</details>
+<details>
+  <summary>6 blocks</summary>
 Once, there was a shark named Ben. Ben loved to eat fish. But one day, it started to rain. Ben knew if he was not outside, he said yes.
 
 Ben took the fish home and set a picnic. He mixed yummy food with a big bowl of food. But as he drove, he noticed that some of the water was dirty. He wanted to eat some of the fish, but he was not happy.
@@ -93,13 +91,21 @@ Ben said, "Mum, this is not nice. You should eat all day. It's not good to eat o
 Mum smiled and said, "Yes, Ben. We will be back soon. We cannot buy another fish for you. We can be friends."
 
 Ben and Ben agreed and went back to the sea. They made a big splashes with the sea. Ben was happy. Now, Ben and Lily shared their fish with the fish. They were all friends and had a lot of fun together.<|endoftext|>
+</details>
+<details>
+  <summary>10 blocks</summary>
+Once, there was a shark named Ben. Ben loved to eat beef. One day, he went to the market with his friend, a little girl named Sue. Sue had a big jar of oats. "Look, Tommy!" she said. "Do you want more oats?"
 
-```
-The 2 block model produces the simplest and shortest stories, but the topic drifts very quickly. The 2 block model also has little understanding of the meaning of words as it shows the shark eating beef, carrots, and lettuce. Ther stories also show litte memory of events and story structure.
+Tom smiled and said, "Yes, please!" He went up to the store to get some more cheese. Sue wanted one of the oats, but it was too big. They both decided to leave the store.
 
-The 4 block model I find the most disappointing. The model still does not really understand well the meaning of the story and the structure of sentences. While all the text it produces is grammatically correct, the stories produced are essentially picked at random from a bag of related sentences. The model also did not complete the story within the given 500 tokens, showing how much the model's stories drift topics, never finding "closure".
+As they were looking around, they saw many small apples sitting on a big table. They were sad, but they could not find a fun place. They went home and found a big, juicy worm. Tom and Sue were happy that they could have fun with the big, red ball. They continued to play and find new things in the garden.<|endoftext|>
+</details>
 
-The 6 block model is also mostly grammatically correct, but there is no visible improvement. However, it shows a more complex story structure without drifting topics too much, which is nice to see in the bigger models.
+For the 10 block model, I increased the context length and d_model to 512. While the stories are all terrible, you can see that the storyline is much more consistent in the last model than in the 2 block model.
 
-Overall compared to the Wizard of Oz, the model performs much better, but I am still dissapointed. Next, I will be running bigger models on GPUs on Kaggle.
+## Pre-Training, the Fineweb-edu dataset, and a conversational model
+To load the dataset, I had to tweak the data loading process. Due to the model's large size, the text file is too big to be loaded at once, so I tokeize in chunks and write it into a .bin file full of tokens, and load it using np.memmap.
+
+Run load_fineweb.py to load the binary. load_TinyStories now also uses the same pipeline for consistency.
+
 
