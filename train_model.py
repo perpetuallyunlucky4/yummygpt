@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -7,9 +8,21 @@ from yummygpt import TransformerFinal, DataLoader
 from datetime import datetime
 import argparse
 import math
+import numpy as np
 
 
-tokenizer = tiktoken.get_encoding("gpt2")
+tokenizer_base = tiktoken.get_encoding("gpt2")
+special_toks = {
+    "<|user|>": 50257,
+    "<|assistant|>": 50258,
+    "<|system|>": 50259,
+}
+tokenizer = tiktoken.Encoding(
+    name="gpt2_chat",
+    pat_str=tokenizer_base._pat_str,
+    mergeable_ranks=tokenizer_base._mergeable_ranks,
+    special_tokens = special_toks,
+) #to create a tokenizer with all the special role tokens
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-path", "--path", required=True)
@@ -19,16 +32,16 @@ model_path = args.path #get model path
 
 hyper_params = {
     #architectire
-    "d_model": 384,
-    "n_blocks": 6,
-    "n_heads": 4,
+    "d_model": 512,
+    "n_blocks": 12,
+    "n_heads": 8,
     "vocab_size" : tokenizer.n_vocab,
     "weight_tying": True,
     "dropout": 0.1,
 
     #training
-    "batch_size": 8,
-    "context_len": 256,
+    "batch_size": 16,
+    "context_len": 512,
     "steps": 20000,
     "T_max": 18000,
     "learn_rate": 3e-4,
@@ -47,14 +60,12 @@ hyper_params = {
 torch.manual_seed(hyper_params["torch_seed"]) #manual seed for reproducubility
 
 if __name__ == "__main__":
-    with open(f"model_train_files/{model_path}.txt", "r") as f:
-        text = f.read()
-
-    data = torch.tensor(tokenizer.encode(text, allowed_special={"<|endoftext|>"}), dtype=torch.long, device=hyper_params["device"]) #encode text data from file
-    train_data = data[:int(hyper_params["train_split"]*len(data))]
+    data = np.memmap(f"{model_path}.bin", dtype=np.uint16, mode="r") #only loads slices of the binary that is called
+                                                                     #not directly a numpy array, use torch.from_numpy(np.array(data[slice])) in the dataloader
+    train_data = data[:int(hyper_params["train_split"]*len(data))]   #make sure to decode as np.int64, which is torch.long
     eval_data = data[int(hyper_params["train_split"]*len(data)):] #get train and test splits
 
-    trainloader = DataLoader(hyper_params["batch_size"], hyper_params["context_len"], train_data)
+    trainloader = DataLoader(hyper_params["batch_size"], hyper_params["context_len"], train_data) #they only take slices of the data needed when the generate function is called
     evalloader = DataLoader(hyper_params["eval_batch_size"], hyper_params["context_len"], eval_data) #initialize data loaders
 
     m = TransformerFinal(hyper_params["d_model"], hyper_params["context_len"], hyper_params["n_heads"], hyper_params["n_blocks"], hyper_params["vocab_size"], hyper_params["dropout"], hyper_params["weight_tying"]).to(hyper_params["device"])
@@ -71,6 +82,7 @@ if __name__ == "__main__":
     try:
         for step in range(hyper_params["steps"]):
             inputs, targets = trainloader.generate() #generate inputs and targets from dataset
+            inputs, targets = inputs.to(hyper_params["device"]), targets.to(hyper_params["device"])
 
             logits, loss = m(inputs, targets) #generate logits and loss from inputs and targets
 
@@ -91,6 +103,8 @@ if __name__ == "__main__":
 
                 with torch.no_grad():
                     eval_inputs, eval_targets = evalloader.generate()
+                    eval_inputs, eval_targets = eval_inputs.to(hyper_params["device"]), eval_targets.to(hyper_params["device"])
+
                     eval_logits, eval_loss = m(eval_inputs, eval_targets)
 
                 #print(f"step: {step}\ntraining loss:{loss.item():.2f}\ntesting loss: {eval_loss.item():.2f}\naverage training loss / 50 steps: {round(sum(training_losses[-50:]) / 50, 2) if len(training_losses) > 50 else round(sum(training_losses[-len(training_losses):]) / len(training_losses), 2)}\ntime / 50 epochs: {(now_time - start_time) / ((step / 50)) if step != 0 else 0}\nestimated time remaining: {(now_time - start_time) / step * (hyper_params['steps']) - (now_time - start_time) if step != 0 else 0} left\n" + "[" + "#" * round(step / hyper_params['steps']*50) + "-" * round(50 - step / hyper_params['steps']*50) + "]\n\x1b[7A")
