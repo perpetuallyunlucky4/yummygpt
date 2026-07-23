@@ -40,14 +40,21 @@ if __name__ == "__main__":
     print("done")
     
     while True:
-        in_text = input("->:")
+        in_text = input("\n->:")
         if in_text == "exit":
             break
 
         tokens = torch.tensor(tokenizer.encode(in_text, allowed_special="all")).unsqueeze(0)
 
-        with torch.no_grad():
-            out_tokens = m.generate_tokens(tokens, max_iters=500, temp=0.7, eos=eot)
+        for i in range(200):
+            out_probs = m.generate_tokens(tokens, context_len=model_saved["hyper_params"]["context_len"], temp=0.7)
+            out_token = torch.multinomial(out_probs, num_samples=1)  # sample from the probabilities
+            tokens = torch.cat((tokens, out_token), dim=1)
 
-        print(out_tokens)
-        print(f"->:{tokenizer.decode(out_tokens[0].tolist())}")
+            print(tokenizer.decode(out_token[0].tolist()), flush=True, end="")
+
+            #if i % 50 == 0:
+            #    print(out_probs[:, 50256])
+
+            if out_token.item() == eot:
+                break
