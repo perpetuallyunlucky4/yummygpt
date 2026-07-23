@@ -4,6 +4,7 @@ import numpy as np
 
 tokenizer_base = tiktoken.get_encoding("gpt2")
 special_toks = {
+    **tokenizer_base._special_tokens,
     "<|user|>": 50257,
     "<|assistant|>": 50258,
     "<|system|>": 50259,
@@ -13,7 +14,7 @@ tokenizer = tiktoken.Encoding(
     pat_str=tokenizer_base._pat_str,
     mergeable_ranks=tokenizer_base._mergeable_ranks,
     special_tokens = special_toks,
-)
+) #to create a tokenizer with all the special role tokens
 
 print("writing data to txt file....")
 
