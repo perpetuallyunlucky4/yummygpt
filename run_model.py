@@ -18,7 +18,19 @@ model_saved = torch.load(f"saved_models/{args.path}.pth", map_location=torch.dev
 
 torch.manual_seed(model_saved["hyper_params"]["torch_seed"])
 
-tokenizer = tiktoken.get_encoding("gpt2")
+tokenizer_base = tiktoken.get_encoding("gpt2")
+special_toks = {
+    **tokenizer_base._special_tokens
+    "<|user|>": 50257,
+    "<|assistant|>": 50258,
+    "<|system|>": 50259,
+}
+tokenizer = tiktoken.Encoding(
+    name="gpt2_chat",
+    pat_str=tokenizer_base._pat_str,
+    mergeable_ranks=tokenizer_base._mergeable_ranks,
+    special_tokens = special_toks,
+) #to create a tokenizer with all the special role tokens
 eot = tokenizer.eot_token
 
 if __name__ == "__main__":
