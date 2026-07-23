@@ -157,20 +157,15 @@ class TransformerFinal(nn.Module):
 
         return logits, loss
 
-    def generate_tokens(self, tokens, max_iters=1000, temp=1.0, eos=None):
-        for iter in range(max_iters):
-            with torch.no_grad():
-                logits, loss = self.forward(tokens) #run tokens through transformer
-                logits = logits[:, -1, :] #take all the batches, the last token in the sequence, and all the outputs of the final token
-                logits = logits/temp
-                out_probs = F.softmax(logits, dim=1) #softmax the output to get probabililties
-                out_token = torch.multinomial(out_probs, num_samples=1) #sample from the probabilities
-                tokens = torch.cat((tokens, out_token), dim=1) #append the final token to all the tokens
+    def generate_tokens(self, tokens, context_len, temp=1.0):
+        tokens = tokens[:, :context_len]
+        with torch.no_grad():
+            logits, loss = self.forward(tokens) #run tokens through transformer
+            logits = logits[:, -1, :] #take all the batches, the last token in the sequence, and all the outputs of the final token
+            logits = logits/temp
+            out_probs = F.softmax(logits, dim=1) #softmax the output to get probabililties
 
-                if eos is not None and out_token.item() == eos:
-                    break #break if final token is an endoftext token
-
-        return tokens #return the final list of tokens
+        return out_probs #return the final list of tokens
 
 
 
