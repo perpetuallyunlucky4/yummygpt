@@ -12,6 +12,7 @@ import math
 
 tokenizer_base = tiktoken.get_encoding("gpt2")
 special_toks = {
+    **tokenizer_base._special_tokens
     "<|user|>": 50257,
     "<|assistant|>": 50258,
     "<|system|>": 50259,
