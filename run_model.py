@@ -20,7 +20,7 @@ torch.manual_seed(model_saved["hyper_params"]["torch_seed"])
 
 tokenizer_base = tiktoken.get_encoding("gpt2")
 special_toks = {
-    **tokenizer_base._special_tokens
+    **tokenizer_base._special_tokens,
     "<|user|>": 50257,
     "<|assistant|>": 50258,
     "<|system|>": 50259,
