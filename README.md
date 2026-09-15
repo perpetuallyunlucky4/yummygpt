@@ -2,7 +2,7 @@
 A GPT-style Decoder only language model\
 The code also allows for GPU to be used.
 
-## Training on the Wizard of Oz
+### Training on the Wizard of Oz
 The first test was with a Wizard of Oz text file with no endoftext tokens, I used 
 ```
 "d_model": 256,
@@ -41,7 +41,7 @@ the people."
 
 I am overall very happy with the model's performance, with a final loss of 2 - 2.5 after only 10000 epochs.
 
-## Training on the TinyStories dataset
+### Training on the TinyStories dataset
 To download the dataset and create a text file, run load_TinyStories.py. The code downloads the first 12000 stories of the "train" dataset, appends eos tokens to the end of every story and saves it to TinyStories.txt
 
 While experimenting with the dataset, I added model state_dict saving and config.json to save the model state and configuration after a KeyboardInterrupt. I also added weight tying from the input embedding `wte` and the final layer `fl`
@@ -107,18 +107,34 @@ As they were looking around, they saw many small apples sitting on a big table. 
 
 For the 10 block model, I increased the context length and d_model to 512. While the stories are all terrible, you can see that the storyline is much more consistent in the last model than in the 2 block model.
 
-## Pre-Training, the Fineweb-edu dataset, and a conversational model
+### Pre-Training, the Fineweb-edu dataset, and a conversational model
 To load the dataset, I had to tweak the data loading process. Due to the model's large size, the text file is too big to be loaded at once, so I tokeize in chunks and write it into a .bin file full of tokens, and load it using np.memmap.
 
 Run load_fineweb.py to load the binary. load_TinyStories now also uses the same pipeline for consistency.
 
 Next, I needed to add conversational finetuning to the model, so load_ultrachat.py and load_axiom.py will load two datasets: ultrachat is from huggingface, and AXIOM is a test dataset I created myself. The formats are different, so I had to use different loaders. Also, the dataloaders for finetuning is different. The entire pipeline is changed to include the ends of conversations so that DataLoader2 only samples within conversations in training. Use DataLoader2 for finetuning -- read the comments in the code. load_axiom.py and load_ultrachat.py produces three files: inputs, targets, and indexes. Targets are inputs shifted by one, and indexes tell DataLoader2 where to sample within the dataset. Numpy memmaps are used for everything now because of the much larger datasets. More information on the data pipeline in appendix A.
 
-## Final models
+### Final models
+#### fineweb1024_1216_v1, 2, 3, 4
 
-## Conclusions and next steps
+#### ultrachat1024_1216_v41, 42
 
-# Appendix A -- The AXIOM dataset format
+#### axiom models
+
+### Improvements for the next iteration
+#### Rotatory Positional Encodings
+I've already started working, and I will definitely add it next time
+
+#### SwiGLU
+Honestly don't understand the logic behind this, but adding complexity to the model should really help
+
+#### RMSNorm
+Another thing I don't understand, but it seems cool and something else that can be easily and immediately implemented
+
+#### MOE (Mixture of Experts)
+The coolest one on the list, I will add it once I like the performance of the model on its own and when I get access to better computers probably
+
+## Appendix A -- The AXIOM dataset format
 The format I used for AXIOM is simple:
 ```
 USER
@@ -133,6 +149,11 @@ continued comversation
 ENDTEXT
 ```
 
-# Appendix B -- Data pipeline and training steps
+## Appendix B -- Data pipeline and training steps for conversational model
 
+### Pretraining on fineweb
+The data is loaded from huggingface into a .bin file in tokenized form (load_fineweb.py). DataLoader then takes in a numpy memmap of the binary and slices context_len tokens, and generates input and target batches from there (shift inputs by one to get targets). Model is then trained on the data (train_model.py) and saved.
+
+### Finetuning on Axiom and UltraChat
+Data is loaded from huggingface again. This time, it is loaded into three separate files: inputs, targets, and index (load_axiom.py, load_ultrachat.py). The files both take in different formats of data, and split the data into conversations. The index of each conversation in the binary as well as the length of the tokenized conversation are both saved into the index file. The inputs and targets are generated into separate files. DataLoader2 Then takes in all three files and samples WITHIN the conversations, which is different from the fineweb process. Dataloader2 then pads the conversations if the entire conversation is too short (pad is <system>). DataLoader2 then produces the same input and target batches and trains.
 
