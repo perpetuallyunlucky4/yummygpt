@@ -12,28 +12,32 @@ The first test was with a Wizard of Oz text file with no endoftext tokens, I use
 ```
 and generated incoherent and grammatically incorrect sentences, but words are seen, including "Dorothy", "The Tin Woodman", "Zeb", and "The Prince":
 
-```
+<details>
+    <summary>Wizard of Oz</summary>
 sun--our not make the palace," said Dorothy, "if you untied him, he
 she will bearers of the Sorcerer.
 to be the Wizard that the Wizard returned the sorceries you are able to
 without happy, he knows.
-```
-```
+</details>
+<details>
+      <summary>Wizard of Oz</summary>
 At altogether; so They are a young girl could open about it. And you can't do not seem to eat the Emerald
 
 "They are from the only you the Tin Woodman and bunting, and passed.it."
-```
-```
+</details>
+<details>
+      <summary>Wizard of Oz</summary>
 "That's true," said Zeb.
 In the balloon, with a light into a cleverly through the air.
-```
-```
+</details>
+<details>
+      <summary>Wizard of Oz</summary>
 He will
 "And we do if you must be planted at once come to go we belong there," the Prince.
 
 center the earth," explained the girl. "We wouldn't defeated us yet, for we been
 the people."
-```
+</details>
 
 I am overall very happy with the model's performance, with a final loss of 2 - 2.5 after only 10000 epochs.
 
@@ -107,5 +111,28 @@ For the 10 block model, I increased the context length and d_model to 512. While
 To load the dataset, I had to tweak the data loading process. Due to the model's large size, the text file is too big to be loaded at once, so I tokeize in chunks and write it into a .bin file full of tokens, and load it using np.memmap.
 
 Run load_fineweb.py to load the binary. load_TinyStories now also uses the same pipeline for consistency.
+
+Next, I needed to add conversational finetuning to the model, so load_ultrachat.py and load_axiom.py will load two datasets: ultrachat is from huggingface, and AXIOM is a test dataset I created myself. The formats are different, so I had to use different loaders. Also, the dataloaders for finetuning is different. The entire pipeline is changed to include the ends of conversations so that DataLoader2 only samples within conversations in training. Use DataLoader2 for finetuning -- read the comments in the code. load_axiom.py and load_ultrachat.py produces three files: inputs, targets, and indexes. Targets are inputs shifted by one, and indexes tell DataLoader2 where to sample within the dataset. Numpy memmaps are used for everything now because of the much larger datasets. More information on the data pipeline in appendix A.
+
+## Final models
+
+## Conclusions and next steps
+
+# Appendix A -- The AXIOM dataset format
+The format I used for AXIOM is simple, simply:
+```
+USER
+user text here
+
+ASSISTANT
+assistant text here
+
+USER
+continued comversation
+
+ENDTEXT
+```
+
+# Appendix B -- Data pipeline and training steps
 
 
