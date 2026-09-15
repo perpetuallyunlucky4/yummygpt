@@ -79,10 +79,10 @@ if __name__ == "__main__":
     inputs_data = np.memmap("model_train_files/axiom_tokens.bin", dtype=np.uint16, mode="r")
     targets_data = np.memmap("model_train_files/axiom_targets.bin", dtype=np.int32, mode="r")
 
-    indexes_data = np.load("model_train_files/axiom_index.npy", mmap_mode="r")
+    indexes_data = np.load("model_train_files/axiom_index.npy", mmap_mode="r") #loading for the chat formats
 
     trainloader = DataLoader2(hyper_params["batch_size"], hyper_params["context_len"], inputs_data, targets_data, indexes_data)
-    evalloader = DataLoader2(hyper_params["eval_batch_size"], hyper_params["context_len"], inputs_data, targets_data, indexes_data)
+    evalloader = DataLoader2(hyper_params["eval_batch_size"], hyper_params["context_len"], inputs_data, targets_data, indexes_data) #use dataloader one for inputting non shifted data from one source, such as fineweb
 
     m = TransformerFinal(hyper_params["d_model"], hyper_params["context_len"], hyper_params["n_heads"], hyper_params["n_blocks"], hyper_params["vocab_size"], hyper_params["dropout"], hyper_params["weight_tying"]).to(hyper_params["device"])
     m_tosave = m
