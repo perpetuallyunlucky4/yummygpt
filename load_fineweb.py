@@ -16,45 +16,27 @@ tokenizer = tiktoken.Encoding(
     special_tokens = special_toks,
 ) #to create a tokenizer with all the special role tokens
 
-print("writing data to file....")
-
 dataset = load_dataset("HuggingFaceFW/fineweb-edu", "sample-10BT", split="train", streaming=True)
-dataset = dataset.take(20000)
+dataset = dataset.take(2000000)
 
-tezt = "<|endoftext|>\n\n".join(dataset["text"]) + "<|endoftext|>"
-
-with open("model_train_files/fineweb.txt", "w", encoding="utf-8") as f:
-    f.write(tezt)
-
-print("done")
 print("writing tokens to binary file....")
 
-buffer = ""
-doc_count = 0
-seperator = "<|endoftext|>\n\n"
+n_docs = 0
 
-with open("model_train_files/fineweb.txt", "r") as infile, open("model_train_files/fineweb_tokens.bin", "wb") as outfile:
-    while True:
-        chunk = infile.read(10_000_000)
-        if not chunk:
-            break
+buffer = []
 
-        buffer += chunk
-        docs = buffer.split(seperator)
-        buffer = docs.pop()
-
-        for doc in docs:
-            text = doc + seperator
-            tokens = tokenizer.encode(text, allowed_special="all")
-            np.array(tokens, dtype=np.uint16).tofile(outfile)
-            doc_count +=1
-
-        print(f"processed {doc_count} documents\r")
+with open("model_train_files/fineweb_tokens.bin", "wb") as outfile:
+    for document in dataset:
+        text = document["text"] + "<|endoftext|>\n"
+        tokens = tokenizer.encode(text, allowed_special="all")
+        buffer.extend(tokens)
+        if len(buffer) >= 1_00_000:
+            np.array(buffer, dtype=np.uint16).tofile(outfile)
+            buffer.clear()
+        n_docs += 1
+        if n_docs % 10000 == 0:
+            print(f"{n_docs} documents processed")
 
     if buffer:
-        tokens = tokenizer.encode(text, allowed_special="all")
-        np.array(tokens, dtype=np.uint16).tofile(outfile)
-
+        np.array(buffer, dtype=np.uint16).tofile(outfile)
 print("done")
-
-

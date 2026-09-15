@@ -21,6 +21,52 @@ class DataLoader():
         return inputs, targets
 
 
+class DataLoader2():
+    def __init__(self, batch_size, context_len, inputs, targets, indexes):
+        self.batch_size = batch_size
+        self.context_len = context_len
+
+        self.inputs = inputs
+        self.targets = targets
+
+        self.indexes = indexes
+
+    def generate(self):
+        batch_inputs = []
+        batch_targets = []
+
+        for i in range(self.batch_size):
+            conv_index = torch.randint(0, len(self.indexes), ()).item()
+
+            start, length = self.indexes[conv_index]
+
+            if length > self.context_len:
+                offset = torch.randint(0, length - self.context_len, ()).item()
+
+                inputs = self.inputs[start+offset:start+offset+self.context_len]
+                targets = self.targets[start+offset+1:start+offset+self.context_len+1]
+
+            else:
+                inputs = self.inputs[start:start+length]
+                targets = self.targets[start+1:start+length+1]
+
+                pad_len = self.context_len - length
+
+                if len(targets) == len(inputs):
+                    target_pad_len = pad_len
+
+                else:
+                    target_pad_len = pad_len + 1
+
+                inputs = np.pad(inputs, (0, pad_len), constant_values=50259)
+                targets = np.pad(targets, (0, target_pad_len), constant_values=-100)
+
+            batch_inputs.append(torch.from_numpy(np.array(inputs, dtype=np.int64)))
+            batch_targets.append(torch.from_numpy(np.array(targets, dtype=np.int64)))
+
+        return torch.stack(batch_inputs, dim=0), torch.stack(batch_targets, dim=0)
+
+
 class PositionalEmbeddings(nn.Module):
     def __init__(self, context_len, d_model, scale=10000):
         super().__init__()
@@ -153,15 +199,23 @@ class TransformerFinal(nn.Module):
             batch_size, context_length, vocab_size = logits.shape
             logits = logits.view(batch_size * context_length, vocab_size)
             targets = targets.view(batch_size * context_length)
-            loss = F.cross_entropy(logits, targets) #calculate loss from the targets if targets is not None
+            loss = F.cross_entropy(logits, targets, ignore_index=-100) #calculate loss from the targets if targets is not None
 
         return logits, loss
 
-    def generate_tokens(self, tokens, context_len, temp=1.0):
-        tokens = tokens[:, :context_len]
+    def generate_tokens(self, tokens, context_len, temp, rep_penalty):
+        tokens = tokens[:, -context_len:]
         with torch.no_grad():
             logits, loss = self.forward(tokens) #run tokens through transformer
             logits = logits[:, -1, :] #take all the batches, the last token in the sequence, and all the outputs of the final token
+
+            for token in torch.unique(tokens[0]):
+                if logits[0, token] > 0:
+                    logits[0, token] /= rep_penalty
+
+                elif logits[0, token] < 0:
+                    logits[0, token] *= rep_penalty
+
             logits = logits/temp
             out_probs = F.softmax(logits, dim=1) #softmax the output to get probabililties
 
