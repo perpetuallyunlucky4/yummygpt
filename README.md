@@ -119,7 +119,7 @@ Next, I needed to add conversational finetuning to the model, so load_ultrachat.
 ## Conclusions and next steps
 
 # Appendix A -- The AXIOM dataset format
-The format I used for AXIOM is simple, simply:
+The format I used for AXIOM is simple:
 ```
 USER
 user text here
