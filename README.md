@@ -181,6 +181,35 @@ John Lennon's book describes how it has lost a significant amount of traction ov
 
 As seen, the model can make fairly good text, but the topic and focus is not there yet. Finetuning is supposed to help with this.
 #### ultrachat1024_1216_v41, 42 -- finetuning
+<details>
+    <summary>
+        What is the capital of Germany?
+    </summary>
+    The capital of Germany is located on the banks of the River Rhine. The capital city is situated at the confluence of the Rhine and Danube rivers, which form a part of a larger metropolitan area connecting Zurich to the German Empire, with Brussels as its main location.
+
+The capital of Germany is located in the city of Leipzig and is known for its high-quality shopping malls, running stores, and public transport. The city has several important markets and attractions, including the Seinnitz, the Südlerstheße, and the Royal Dutch Restaurant.
+
+The capital of Germany was the capital of the Kingdom of Baden-Württemberg since the 7th century, as well as of the German Empire as a whole and continues to be an important center of cultural exchange and political activity.
+<|endoftext|>
+</details>
+
+<details>
+    <summary>
+        What are the steps to bake a cake?
+    </summary>
+    The steps to bake a cake are typically taken by preparing the beverage in boiling water, which melts the cake into ice cubes. The liquid flows from the base of the cake, creating a solid crust that coats an interior piece of cake. Once it is melted, it melts onto a brick surface. Once it is cooled, it can be decorated with glass bottles ornaments, always painted with their own style and designs. To make the cake, the wine is chilled until bubbly, then cooled over a fire.
+<|endoftext|>
+</details>
+
+<details>
+    <summary>
+        Tell me about the main protagonist of George Orwell's book 1984, Winston Smith.
+    </summary>
+    George Orwell's book 1984 was a celebration of the revolutionary movement of the time, inspired by the idea of the human spirit and the struggle for individual rights and freedoms. The book's publication now houses numerous copies to this day, including "Folly: A History of Acculturation" (1967), "Economic History Type II" (1968), and "The Essential Writings of Winston Smith", all written by writers such as Robert Woodson and William Wordsworth. There are also numerous political prisoners and intellectuals collaborating for the modern human rights movement.
+<|endoftext|>
+</details>
+
+The model now can answer questions in a chat format, but responses are still not correct. It is really cool though.
 
 #### axiom models -- further finetuning/alingment
 
