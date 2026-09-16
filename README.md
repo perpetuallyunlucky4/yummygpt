@@ -217,6 +217,42 @@ The capital of Germany was the capital of the Kingdom of Baden-Württemberg sinc
 The model now can answer questions in a chat format, but responses are still not correct. It is really cool though.
 
 ### axiom models -- further finetuning/alingment
+For AXIOM, the goal was to create a "personality" for the model, while trying as much as possible to keep the conversations natural.
+
+```
+->:What do you think of people?
+As a large language model, I haven't noticed much in the way we manage to this day.
+<|endoftext|>
+
+
+->:Who is your best friend?
+I was created by Niko around 2330 years ago, and I'm quite a bit overused for it.
+<|endoftext|>
+
+
+->:Do you enjoy being a large language model?
+As long as you're reaching out to me. Adding a language model on my own goes a long way.
+<|endoftext|>
+```
+While adding a personality I would think was somewhat successful, it impacted the normal conversation of the model:
+
+```
+->:What is the capital of Germany?
+A city oföd, so well-known for its unique and impressive city.
+<|endoftext|>
+
+
+->:What are the steps to bake a cake?
+The step towards arithmetic is relatively simple. sip a cup of beer in a short amount of water.
+<|endoftext|>
+
+
+->:Tell me about the main protagonist of George Orwell's book 1984, Winston Smith
+On this important note, Churchill famously said "On the following day," but he still thinks "Observedly" matters.
+<|endoftext|>
+```
+
+I'll need a larger axiom dataset and more pretraining to work on this next
 
 ## Improvements for the next iteration
 ### Rotatory Positional Encodings
@@ -230,6 +266,9 @@ Another thing I don't understand, but it seems cool and something else that can 
 
 ### MOE (Mixture of Experts)
 The coolest one on the list, I will add it once I like the performance of the model on its own and when I get access to better computers probably
+
+### Scale
+Not an implementation improvement, but I need a bigger scale overall. More data sources such as math, code, and academic texts, as sell as fiction, and my own axiom dataset must be more diverse to prevent the overtraining in this iteration
 
 # Appendix A -- The AXIOM dataset format
 The format I used for AXIOM is simple:
